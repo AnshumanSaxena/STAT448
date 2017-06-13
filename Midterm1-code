@@ -1,0 +1,299 @@
+
+title1 STAT 448 Midterm 1;
+title2 Anshuman Saxena;
+title3 03/28/2017;
+
+/*Data for exercises 1-5*/
+data blood; 
+infile '/home/saxena60/448 (2)/Midterm/blood_pressure.csv' dlm=',' firstobs=2;
+input USUBJID $7. AGE SEX $ RACE $ DSDECOD SAFEFL FASFL PPRFL $ COMPFL $ RANDDT BASEDT RTRT $ RTRTN FIRSTDOSE LASTDOSE SITE BASE VISITNUM SDAY SAMPDT CHG VALUE;
+if visitnum=5;
+if value<120 then responder=1; else responder=0;
+keep usubjid age sex race rtrtn site base value responder;
+run;
+
+title4 Excercise 1;
+/* basic descriptive statistics and histograms of 'value' */
+
+proc univariate data=blood;
+	var value;
+	histogram value;
+run;
+
+/* visually and quantitatively checking whether normality is a reasonable assumption */
+
+proc univariate data=blood normal;
+	var value;
+	histogram value /normal;
+	probplot value;
+	ods select TestsforNormality Histogram ProbPlot;
+run;
+
+ods text="The mean and median of systolic blood pressure value is 127.83 and 128.03, 
+with a standard deviation of 12.33. Since mean is smaller than the median, the 
+distribution is likely to have a tail to the left. The negative skewness of -0.05 
+supports it. The range of systolic blood pressure value is 79.23. 
+
+Systolic blood pressure value seems to follow normal distribution. The quantitative 
+tests agree. All the four tests indicate a p-value of greater than 0.05, showing that 
+we fail to reject H0, which is the data is normally distributed.";
+
+/* repeating the analysis for 'rtrtn' */
+
+proc sort data=blood;
+	by rtrtn;
+run;
+
+proc univariate data=blood;
+	var value;
+	histogram value;
+	by rtrtn;
+run;
+
+proc univariate data=blood normal;
+	var value;
+	histogram value /normal;
+	probplot value;
+	by rtrtn;
+	ods select TestsforNormality Histogram ProbPlot;
+run;
+
+ods text="Now we repeat the analysis by blood pressure value of treatment groups. 
+Firstly, mean values for groups 1, 2, 3 and 4 are 131.47, 127.70, 126.21 and 125.95, 
+respectively. The mean blood pressure values decreases as the groups progress. The 
+standard deviation and range for groups 1, 2, 3 and 4 are (131.21, 66.95), 
+(127.43, 71.74), (126.55, 69.32) and (126.79, 62.53), respectively. We can see that 
+there is not too large a difference in standard deviation and range between groups.
+
+According to the four tests that check for normality, all four treatment groups of 
+blood pressure values are normally distributed. The p-value for all tests is greater 
+than 0.05, indicating that we fail to reject H0, which is the data is normally 
+distributed.";
+
+title4 Excercise 2;
+/* performing hypothesis test */
+/* H0: mu(rtrtn=1) = mu(rtrtn=4) */
+/* H1: mu(rtrtn=1) > mu(rtrtn=4) */
+
+proc ttest data=blood sides=u;
+	where rtrtn in (1,4);
+	class rtrtn;
+	var value;
+	ods select ConfLimits TTests Equality;
+run;
+
+ods text="According to Excercise 1, we found that all the four treatment groups are 
+normally distributed, hence in order to compare two population means, we will have 
+to run the proc ttest procedure. And since we want to find out whether the reference 
+group (rtrtn=1) has a significantly larger mean than ABC123 80mg (rtrtn=4) as the alternative hypothesis, 
+we will have to run the upper tail test. 
+
+The p-value of Folded F (equality of variances) is 0.75, which is much larger than 0.05. 
+Hence, we refer to the Pooled section of the table above. The Pooled p-value is <0.05, 
+therefore we reject the null hypothesis and conclude that the mean of the reference 
+group (rtrtn=1) is significantly larger than the mean of ABC123 80mg (rtrtn=4).";
+
+title4 Excercise 3;
+/* performing frequency analysis */
+
+proc freq data=blood;
+	tables rtrtn*responder /expected chisq norow nocol nopercent;
+run;
+
+ods text="From the contingency table between 'rtrtn' and 'responder', we can see that 
+the expected value of the four groups is the same based on the responder group. 
+Responder group 1 has a smaller expectated values and frequency compared to responder 
+group 0. 
+
+We can check association between the two categorical variables through the asymptotic 
+tests. The Chi-Square and the Likelihood Ratio Chi-Square p-values are <0.05, therefore 
+we can reject H0, which is the two are independent. We can conclude that there exists 
+significant associations between the two variables. 
+
+We cannot apply the Mantel-Haenzel Test because 'rtrtn' is an ordinal variable (the 
+differences between each category are not constant). The magnitutde of the relationship 
+between the two variables can be found in the Phi Coefficient, Contigency Coefficient 
+and Cramer's V. The values of each can be rounded to 0.14. We conclude that there is a 
+small association between 'rtrtn' and 'responder'.";
+
+/* comparisons within rtrtn = 1 and rtrtn = 4 */
+
+proc freq data=blood;
+	tables rtrtn*responder /expected chisq nocol nopercent riskdiff;
+	where rtrtn in (1,4);
+run;
+
+ods text="Now, we just compare the reference group and ABC123 80mg with the responder 
+groups. The proportional difference between responder group 0 is 15.46 and between 
+responder group 1 is -15.46. We can see if the difference is significant using the 
+confidence intervals. The confidence interval (0.076, 0.23) does not include 0, hence 
+we can conclude that ABC123 80mg has larger proportions in responder group 1 than the 
+reference group.";
+
+title4 Excercise 4;
+/* testing main effects through stepwise selection */
+
+proc glmselect data=blood;
+	class sex race rtrtn site;
+	model value=sex race rtrtn site /selection=stepwise(select=sl sle=0.05 sls=0.05);
+run;
+
+ods text="We used stepwise selection to investigate the main effects. It suggested that 
+we drop the variable 'race', since it is not significant. The remaining variables are 
+'sex', 'rtrtn' and 'site'. 
+
+Now, we check the interaction between those 3 statistically significant variables.";
+
+/* drop 'race', testing interactions of remaining variables*/
+
+proc glm data=blood;
+	class sex rtrtn site;
+	model value=sex|rtrtn|site /ss1 ss3;
+run;
+
+ods text="From Type 1 SS and Type 3 SS, we can conclude that the interaction term is 
+not significant. We now focus on the final model.";
+
+/* performing model diagnostics on final model */
+
+proc glm data=blood plots=diagnostics;
+	class sex rtrtn site;
+	model value=sex rtrtn site;
+	output out=dataout r=resid;
+	lsmeans sex rtrtn /tdiff=all pdiff cl;
+run;
+
+ods text="The model chosen is significant with a p-value of less than 0.0001. All of 
+the individual terms in this model are significant with p-values smaller than 0.05. 
+The variation explained by this model is 8.12%. There is a miniscule difference in the 
+results of Type 1 SS and Type 3 SS. 
+
+Now we investigate the variables to find the significant differences. 
+
+For 'sex', we can see that sex 2 has a higher value than sex 1. This pair is 
+significant.
+
+For 'rtrtn', we can see that mean values keep decreasing as the groups progress. We 
+can see that the pairs (rtrtn=2, rtrtn=3), (rtrtn=2, rtrtn=4) and (rtrtn=3, rtrtn=4) 
+are not significant. Their p-values is larger 0.05. rtrtn=1 forms a significant pair 
+with all the other 3 groups.
+
+For 'site', none of the pairs are significant (all have a p-value > 0.05).";
+
+proc univariate data=dataout normal;
+	var resid;
+	ods select TestsforNormality;
+run;
+
+ods text="The normality tests for residuals show that the residuals are normally 
+distributed (p-value > 0.05). The model assumptions are valid.";
+
+title4 Excercise 5;
+/* fitting ANCOVA model */
+
+proc glm data=blood;
+	class sex race rtrtn site;
+	model value=sex race rtrtn site base /ss1 ss3;
+run;
+
+ods text="For this ANCOVA model, we fit 'sex', 'race', 'rtrtn' and 'site' with the 
+covariate 'base'. ";
+
+/* running stepwise selection procedure to find best model */
+
+proc glmselect data=blood;
+	class sex race rtrtn site;
+	model value=sex race rtrtn site base /selection=stepwise(select=SL SLE=0.05 
+	SLS=0.05);
+run;
+
+ods text="'sex', 'rtrtn' and 'site' are retained in the final model after the 
+stepwise procedure with a p-value <0.05. 'race' has been dropped since its p-value 
+was too large.";
+
+/* 'race' is removed, fitting final model and performing model diagnostics */
+
+proc glm data=blood plots=diagnostics;
+	class sex rtrtn site;
+	model value=sex rtrtn site base /ss1 ss3;
+	output out=dataout1 r=resid;
+run;
+
+proc univariate data=dataout1 normal;
+	var resid;
+	ods select TestsforNormality;
+run;
+
+ods text="The final model is significant with a p-value of <0.0001. Both the categorical 
+predictors and covariate are significant. 41.82% of the variation is explained by the 
+model. This is much larger than the ANOVA model, thus we can say this model is better 
+in terms of variation explained. 
+
+The residuals in the Q-Q plot follow the diagonal line. Using the normality tests, we 
+can see that the p-value is greater than 0.05 suggesting that the residuals satisfy 
+the normality assumption.";
+
+/*Data for exercise 6*/
+data housing;
+	infile '/home/saxena60/448 (2)/Midterm/housing.txt' dlm=' ';
+	input crim zn indus chas nox rm age dis rad tax ptratio bb lstat medv;
+run;
+
+title4 Excercise 6;
+/* using stepwise selection to drop insignificant variables */
+
+proc reg data=housing;
+	model medv=crim zn indus nox rm age dis tax ptratio bb lstat /selection=stepwise 
+	sle=0.05 sls=0.05;
+	ods select SelectionSummary;
+run;
+
+ods text="Here, we run a stepwise selection producer on the regression model. The 
+procedure suggests that we drop the variables 'indus', 'age', and 'tax' since they 
+are insignificant.";
+
+/* drop 'indus', 'age', 'tax'; checking for multicollinearity problem */
+
+proc reg data=housing;
+	model medv=crim zn nox rm dis ptratio bb lstat /vif;
+	ods select ANOVA FitStatistics ParameterEstimates DiagnosticsPanel;
+run;
+
+ods text="We performed the variance inflation factor (VIF) test to check if any of 
+the variables violate the multicollinearity assumption. Since we are taking a reference 
+value of VIF < 10 is not correlated, none of the variables exceed it. Therefore, there 
+aren't any correlations.";
+
+/* removing highly influential observations */
+
+proc reg data=housing;
+	model medv=crim zn nox rm dis ptratio bb lstat;
+	output out=diagnostics cookd=cd;
+run;
+
+proc print data=diagnostics;
+	where cd>1;
+run;
+
+ods text="There are not any values with a Cook's Distance greater than 1, hence there 
+aren't any influential values that need to be dropped.";
+
+/* model diagnostics of the final model */
+
+proc reg data=housing;
+	model medv=crim zn nox rm dis ptratio bb lstat;
+	output out=dataout2 r=resid;
+	ods select ANOVA FitStatistics ParameterEstimates DiagnosticsPanel;
+run;
+
+proc univariate data=dataout2 normal;
+	var resid;
+	ods select TestsforNormality;
+run;
+
+ods text="The model is significant with a p-value less than 0.0001. The variation 
+explained by the model is 72.22%. All the parameters are significant. The normality 
+tests have a p-value less than 0.05 suggesting that the residuals do not satisfy the 
+normality assumption.";
+
+title;
